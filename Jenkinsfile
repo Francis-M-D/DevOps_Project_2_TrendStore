@@ -2,8 +2,9 @@ pipeline {
     agent any
 
     environment {
-        IMAGE = "ghostatdocker/trendstore-image"
-    }
+		IMAGE = "ghostatdocker/trendstore-image"
+		TAG = "${BUILD_NUMBER}"
+	}
 
     stages {
 
@@ -16,7 +17,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh 'docker build -t $IMAGE .'
+                sh 'docker build -t $IMAGE:$TAG .'
             }
         }
 
@@ -25,7 +26,7 @@ pipeline {
                 // This securely injects your password from Jenkins credentials
                 withCredentials([string(credentialsId: 'docker-hub-creds', variable: 'DOCKER_PASS')]) {
                     sh "echo \$DOCKER_PASS | docker login -u ghostatdocker --password-stdin"
-                    sh "docker push $IMAGE"
+                    sh "docker push $IMAGE:$TAG"
                 }
             }
         }
@@ -36,6 +37,17 @@ pipeline {
                 sh 'kubectl apply -f k8s/service.yaml'
             }
         }
+	
+		stage('Deploy to Kubernetes') {
+			steps {
+				sh '''
+				kubectl set image deployment/trend-store-app \
+				trendstore=ghostatdocker/trendstore-image:$TAG
+
+				kubectl rollout status deployment/trend-store-app
+				'''
+			}
+		}
 		stage('Verify Deployment') {
             steps {
                 sh '''
