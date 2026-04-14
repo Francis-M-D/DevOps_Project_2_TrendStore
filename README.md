@@ -1,35 +1,26 @@
-Here is your **upgraded README.md** with:
-
-✔ Screenshot placeholders (interview-ready)
-✔ Environment cleanup commands
-✔ Still clean and production-style
-
-You can directly copy-paste this into your repo.
-
----
-
 # 🚀 DevOps Project 2 – TrendStore CI/CD Pipeline
 
 ## 📌 Project Overview
 
-This project demonstrates a **fully automated CI/CD pipeline on AWS** using Jenkins, Docker, Kubernetes (EKS), and Terraform.
+This project demonstrates a **fully automated CI/CD pipeline on AWS** using Jenkins, Docker, Kubernetes (EKS), Terraform, and Monitoring tools.
 
 The pipeline automates:
 
-* GitHub integration
-* Docker image build
-* DockerHub image push
+* GitHub source control integration
+* Docker image build and push
+* DockerHub registry storage
 * Kubernetes deployment on AWS EKS
-* Rolling updates via Jenkins
+* Rolling updates with zero downtime
+* Monitoring using Prometheus + Grafana
 
 ---
 
 # 🧭 Architecture
 
-```text id="arch1"
+```text id="arch-final"
 GitHub
    ↓
-Jenkins (CI/CD on EC2 via Terraform)
+Jenkins (EC2 via Terraform)
    ↓
 Docker Build
    ↓
@@ -37,37 +28,39 @@ DockerHub
    ↓
 AWS EKS Cluster
    ↓
-LoadBalancer (Public URL)
+LoadBalancer (Public Access)
+   ↓
+Prometheus + Grafana (Monitoring)
 ```
 
 ---
 
-# 🏗️ Infrastructure
+# 🏗️ Infrastructure Setup
 
 Terraform is used to provision:
 
-* EC2 instance (Jenkins Server)
+* EC2 instance for Jenkins
 * Docker runtime setup
 * Jenkins installation
 
-📁 Location:
+📁 Path:
 
-```text id="tf1"
+```text id="infra-final"
 infra/main.tf
 ```
 
 ---
 
-# 📦 Application
+# 📦 Application Details
 
 This project uses a **pre-built React production build**:
 
-```text id="app1"
+```text id="app-final"
 Trend/dist
 ```
 
 ✔ No build step required
-✔ Direct deployment-ready artifacts
+✔ Direct static deployment
 
 ---
 
@@ -75,36 +68,41 @@ Trend/dist
 
 ## 📄 Dockerfile
 
-```dockerfile id="docker1"
+```dockerfile id="docker-final"
 FROM nginx:alpine
 
+# Remove default nginx static files
 RUN rm -rf /usr/share/nginx/html/*
 
+# Copy dist files
 COPY Trend/dist/ /usr/share/nginx/html/
 
+# Expose port
 EXPOSE 3000
 
+# Modify nginx to run on port 3000
 RUN sed -i 's/listen       80;/listen 3000;/' /etc/nginx/conf.d/default.conf
 
 CMD ["nginx", "-g", "daemon off;"]
+
 ```
 
 ---
 
-## ▶ Run Locally
+## ▶ Local Run
 
-```bash id="run1"
-docker build -t trendstore .
-docker run -p 3000:3000 trendstore
+```bash id="run-final"
+docker build -t trendstore-image .
+docker run -p 3000:3000 trendstore-image
 ```
 
 ---
 
-# ☸️ Kubernetes (EKS)
+# ☸️ Kubernetes Deployment (EKS)
 
 ## 📄 Deployment
 
-```yaml id="k8s1"
+```yaml id="deployment.yaml"
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -131,7 +129,7 @@ spec:
 
 ## 📄 Service
 
-```yaml id="k8s2"
+```yaml id="service.yaml"
 apiVersion: v1
 kind: Service
 metadata:
@@ -147,41 +145,27 @@ spec:
 
 ---
 
-## ▶ Deploy
+## ▶ Deployment Commands
 
-```bash id="deploy1"
+```bash id="k8s-run-final"
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 ```
 
 ---
 
-## 🌍 Access App
-
-```bash id="access1"
-kubectl get svc
-```
-
-Use:
-
-```text id="url1"
-EXTERNAL-IP (LoadBalancer URL)
-```
-
----
-
 # 🔁 CI/CD Pipeline (Jenkins)
 
-## Flow
+## Pipeline Flow
 
-```text id="flow1"
+```text id="flow-final"
 GitHub Push
    ↓
-Jenkins Trigger
+Jenkins Trigger (Webhook)
    ↓
 Docker Build
    ↓
-Docker Push (DockerHub)
+Docker Push to DockerHub
    ↓
 Kubernetes Rolling Deployment
    ↓
@@ -192,56 +176,58 @@ Live Application Update
 
 ## 📄 Jenkinsfile
 
-```groovy id="jenkins1"
+```groovy id="jenkins-final"
 pipeline {
     agent any
 
     environment {
-        IMAGE = "your-dockerhub-username/trendstore-image"
-        TAG = "${BUILD_NUMBER}"
-    }
+                IMAGE = "ghostatdocker/trendstore-image"
+                TAG = "${BUILD_NUMBER}"
+        }
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/Francis-M-D/DevOps_Project_2_TrendStore.git'
-            }
-        }
+                stage('Git Checkout') {
+                        steps {
+                                // Change 'main' to whatever your branch is named (e.g., 'master' or 'develop')
+                                git branch: 'main', url: 'https://github.com/Francis-M-D/DevOps_Project_2_TrendStore.git'
+                        }
+                }
 
-        stage('Build Docker Image') {
+        stage('Docker Build') {
             steps {
-                sh "docker build -t $IMAGE:$TAG ."
+                sh 'docker build -t $IMAGE:$TAG .'
             }
         }
 
         stage('Docker Push') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'USER',
-                    passwordVariable: 'PASS'
-                )]) {
-                    sh '''
-                    echo $PASS | docker login -u $USER --password-stdin
-                    docker push $IMAGE:$TAG
-                    '''
+                // This securely injects your password from Jenkins credentials
+                withCredentials([string(credentialsId: 'docker-hub-creds', variable: 'DOCKER_PASS')]) {
+                    sh "echo \$DOCKER_PASS | docker login -u ghostatdocker --password-stdin"
+                    sh "docker push $IMAGE:$TAG"
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy to EKS') {
             steps {
-                sh '''
-                kubectl set image deployment/trend-store-app \
-                trendstore=$IMAGE:$TAG
-
-                kubectl rollout status deployment/trend-store-app
-                '''
+                sh 'kubectl apply -f k8s/deployment.yaml'
+                sh 'kubectl apply -f k8s/service.yaml'
             }
         }
 
-        stage('Verify') {
+                stage('Deploy to Kubernetes') {
+                        steps {
+                                sh '''
+                                kubectl set image deployment/trend-store-app \
+                                trendstore=ghostatdocker/trendstore-image:$TAG
+
+                                kubectl rollout status deployment/trend-store-app
+                                '''
+                        }
+                }
+                stage('Verify Deployment') {
             steps {
                 sh '''
                 kubectl get pods
@@ -249,82 +235,113 @@ pipeline {
                 '''
             }
         }
-    }
+        }
+        post {
+                success {
+                        echo "✅ Pipeline executed successfully!"
+                }
+                failure {
+                        echo "❌ Pipeline failed. Check logs."
+                }
+        }
 }
 ```
 
 ---
 
-# 📸 Screenshots (IMPORTANT FOR SUBMISSION)
+# 📊 Monitoring Setup (Prometheus + Grafana)
 
-Add these in your README:
+We use **kube-prometheus-stack** for monitoring cluster health.
+
+## Installation
+
+```bash id="mon-final"
+helm install monitoring prometheus-community/kube-prometheus-stack
+```
+
+## Grafana Access
+
+```bash id="grafana-final"
+kubectl port-forward svc/monitoring-grafana 3000:80
+```
+
+Login:
+
+```text id="login-final"
+Username: admin  
+Password: prom-operator (or decoded secret)
+```
+
+---
+
+# 📸 Screenshots
 
 ## 🔹 Jenkins Pipeline Success
 
-```
-/screenshots/jenkins-success.png
-```
+![Jenkins-success](.screenshots/jenkins-success.png)
+
+---
 
 ## 🔹 Docker Image Push
 
-```
-/screenshots/dockerhub-image.png
-```
+![dockerhub-image](.screenshots/dockerhub-image.png)
+
+---
 
 ## 🔹 Kubernetes Pods Running
 
-```
-/screenshots/k8s-pods.png
-```
+![k8s-pods](.screenshots/k8s-pods.png)
+
+---
 
 ## 🔹 Kubernetes Service (LoadBalancer)
 
-```
-/screenshots/k8s-service.png
-```
+![k8s-service](.screenshots/k8s-service.png)
+
+---
 
 ## 🔹 Live Application UI
 
-```
-/screenshots/live-app.png
-```
+![live-app](.screenshots/live-app.png)
 
 ---
 
-# 🧹 Environment Cleanup (VERY IMPORTANT)
+## 🔹 Grafana Dashboard
 
-Use these commands to avoid AWS billing issues:
+![grafana-dashboard](.screenshots/grafana-dashboard.png)
 
 ---
 
-## 🧨 Kubernetes Cleanup
+# 🧹 Environment Cleanup (IMPORTANT)
 
-```bash id="clean1"
+## Kubernetes cleanup
+
+```bash id="clean-final-1"
 kubectl delete -f k8s/service.yaml
 kubectl delete -f k8s/deployment.yaml
 ```
 
 ---
 
-## 🧨 EKS Cluster Delete
+## EKS cluster deletion
 
-```bash id="clean2"
+```bash id="clean-final-2"
 eksctl delete cluster --name trend-cluster --region ap-south-1
 ```
 
 ---
 
-## 🧨 Docker Cleanup (Jenkins server)
+## Docker cleanup (Jenkins EC2)
 
-```bash id="clean3"
+```bash id="clean-final-3"
 docker system prune -a -f
 ```
 
 ---
 
-## 🧨 Terraform Cleanup (Jenkins EC2)
+## Terraform cleanup (Jenkins server)
 
-```bash id="clean4"
+```bash id="clean-final-4"
 cd infra
 terraform destroy
 ```
@@ -333,13 +350,15 @@ terraform destroy
 
 # 🧰 Tools Used
 
-* AWS EC2 (Jenkins)
-* AWS EKS
+* AWS EC2 (Jenkins Server)
+* AWS EKS (Kubernetes Cluster)
 * Terraform
 * Docker
 * DockerHub
 * Jenkins
 * Kubernetes
+* Prometheus
+* Grafana
 * GitHub
 
 ---
@@ -347,25 +366,12 @@ terraform destroy
 # 🚀 Key Features
 
 ✔ Fully automated CI/CD pipeline
-✔ Rolling updates (zero downtime)
-✔ Dockerized frontend app
+✔ Dockerized frontend application
 ✔ Kubernetes deployment on AWS EKS
+✔ Rolling updates (zero downtime)
 ✔ Versioned Docker images
-✔ Jenkins webhook automation
-
----
-
-# 📁 Project Structure
-
-```text id="structure1"
-.
-├── infra/
-├── k8s/
-├── Trend/dist/
-├── Dockerfile
-├── Jenkinsfile
-└── README.md
-```
+✔ Infrastructure as Code (Terraform)
+✔ Cluster monitoring with Grafana & Prometheus
 
 ---
 
@@ -374,5 +380,4 @@ terraform destroy
 **Maria Francis D**
 DevOps CI/CD Project – TrendStore
 
----
 
