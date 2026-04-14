@@ -378,6 +378,8 @@ terraform destroy
 # 👨‍💻 Author
 
 **Maria Francis D**
-DevOps CI/CD Project – TrendStore
 
+```text
+DevOps CI/CD Project – TrendStore
+```
 
