@@ -4,7 +4,7 @@ FROM nginx:alpine
 RUN rm -rf /usr/share/nginx/html/*
 
 # Copy dist files
-COPY dist/ /usr/share/nginx/html/
+COPY Trend/dist/ /usr/share/nginx/html/
 
 # Expose port
 EXPOSE 3000
